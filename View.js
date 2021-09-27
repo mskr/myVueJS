@@ -1,4 +1,4 @@
-import { validate, validateURL } from '../core/validateInput.js';
+import { validateURL, validateSecurityXSS } from '../core/validateInput.js';
 
 // Interface class
 
@@ -62,6 +62,7 @@ class PageLifecycle {
 // Those subclasses may then use models to update the view.
 // Thus they may be called controllers.
 // Note that you need to add view objects to the DOM yourself.
+// Note that View does not care about event handling. This is done in Button.js.
 
 class View extends PageLifecycle {
   
@@ -75,7 +76,11 @@ class View extends PageLifecycle {
       this.view = document.createElement('div');
     }
 
-    this.view.classList.add('view');
+    if (arg instanceof DocumentFragment) {
+      // https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment
+    } else {
+      this.view.classList.add('view');
+    }
 
     if (Array.isArray(arg)) {
 
@@ -84,10 +89,11 @@ class View extends PageLifecycle {
     } else if (typeof arg === 'string') {
 
       // Analyze CSS selector syntax
-      // Currently only dot syntax
       // E.g. "tag.class"
+      // Currently only dot syntax
 
       const dotSyntax = arg.split('.');
+      const gtSyntax = arg.split('>');
 
       if (dotSyntax.length > 1) {
         
@@ -103,6 +109,7 @@ class View extends PageLifecycle {
     }
 
     this.i18n = {};
+    this.inputTypes = {};
 
   }
 
@@ -110,6 +117,10 @@ class View extends PageLifecycle {
   
   $(selector) {
     return Array.prototype.slice.call(this.view.querySelectorAll(selector));
+  }
+
+  $$(selector) {
+    return this.view.querySelector(selector);
   }
 
   // CSS can take class string or object with styles
@@ -142,7 +153,9 @@ class View extends PageLifecycle {
 
         // Add child as HTML string
         case 'string':
-          this.view.innerHTML += child;
+          if (validateSecurityXSS) {
+            this.view.innerHTML += child;
+          }
           break;
 
         // Add child as DOMNode or View object
@@ -176,13 +189,14 @@ class View extends PageLifecycle {
 
   // Children from JSON
 
-  fromJSON(json) {
+  fromJSON(json, nodeFn) {
 
     if (Array.isArray(json)) {
 
       // Pretty presentation
 
-      this.children(json.map(data => '<div>' + View.choosePresentation(this.i18n[data] || data) + '</div>'));
+      this.children(json.map(data => '<div title="' + data + '">' + View.choosePresentation(this.i18n[data] || data) + '</div>'));
+      if (nodeFn) for (let i in json) nodeFn(this.children()[i], i, json[i]);
 
     } else if (typeof json === 'object') {
 
@@ -192,10 +206,11 @@ class View extends PageLifecycle {
 
         this.children( Object.entries(json).map(data => 
           '<label>' + View.choosePresentation(this.i18n[data[0]] || data[0]) + 
-            '<input name="' + data[0] + '" value="' + View.choosePresentation(this.i18n[data[1]] || data[1]) + '" type="text">' +
+            '<input name="' + data[0] + '" value="' + data[1] + '"' +
+            ' type="' + (this.inputTypes[data[0]] || 'text') + '">' +
           '</label>').concat([ 
           '<input type="submit">'
-          ]) );
+        ]) );
 
         this.view.onsubmit = event => event.preventDefault();
 
@@ -203,8 +218,9 @@ class View extends PageLifecycle {
 
         // Raw presentation
 
-        this.children( Object.entries(json).map(data => 
-          '<pre>' + data[0] + ': ' + data[1] + '</pre>') );
+        const ent = Object.entries(json);
+        this.children( ent.map(data => '<div><pre style="display:inline">' + data[0] + ': </pre><pre style="display:inline">' + data[1] + '</pre></div>') );
+        if (nodeFn) for (let i in ent) nodeFn(this.children()[i], ent[i][0], ent[i][1]);
 
       }
 
@@ -224,6 +240,13 @@ class View extends PageLifecycle {
 
   setInternationalDictionary(dict) {
     this.i18n = dict || {};
+    return this;
+  }
+
+  //
+
+  setInputTypes(dict) {
+    this.inputTypes = dict;
     return this;
   }
 
@@ -311,8 +334,17 @@ class View extends PageLifecycle {
 
   // Set CSS height
 
-  height(arg) {
+  height(arg, padding, margin, border, outline) {
     this.view.style.height = arg;
+    if (typeof padding === 'object') {
+      if (padding.left) this.view.style.paddingLeft = padding.left;
+      if (padding.right) this.view.style.paddingRight = padding.right;
+      if (padding.top) this.view.style.paddingTop = padding.top;
+      if (padding.bottom) this.view.style.paddingBottom = padding.bottom;
+    }
+    if (typeof margin === 'object') {
+      //...
+    }
     return this;
   }
 
@@ -348,14 +380,19 @@ View.hash = function() {
 //
 
 View.choosePresentation = function(data) {
-
   const string = data.toString();
-
   if (validateURL(string)) {
-    return string.substring(string.lastIndexOf('/') + 1);
+    const url = string;
+    const qmarkIndex = url.indexOf('?');
+    if (qmarkIndex > 0) url = url.substring(0, qmarkIndex);
+    const dotIndex = url.lastIndexOf('.');
+    const slashIndex = url.lastIndexOf('/');
+    const slashIndex2 = url.substring(0, slashIndex).lastIndexOf('/');
+    if (dotIndex > slashIndex) return url.substring(slashIndex + 1);
+    else if (slashIndex === url.length - 1) return url.substring(slashIndex2 + 1, slashIndex);
+    else return url.substring(slashIndex);
   }
   return string;
-
 }
 
 //
@@ -384,4 +421,14 @@ View.getAllRules = function() {
 
 //
 
+View.validateSecurityXSS = validateSecurityXSS;
+View.validateURL = validateURL;
+
+//
+
 export default View;
+
+//Todo:
+// Expose new and cool CSS features
+// Scroll behavior: https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-behavior
+// Pointer events: https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events
