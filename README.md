@@ -22,3 +22,9 @@ Build UI in JavaScript, see it in HTML directly, no virtual DOM involved.
 // Note that you need to add view objects to the DOM yourself.
 // Note that View does not care about event handling. This is done in Button.js.
 ```
+
+## My other JS experiments
+
+https://github.com/mskr/DOMScopedScript.html
+
+https://github.com/mskr/css
