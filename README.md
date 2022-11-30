@@ -23,6 +23,8 @@ Build UI in JavaScript, see it in HTML directly, no virtual DOM involved.
 // Note that View does not care about event handling. This is done in Button.js.
 ```
 
+It is more like an ImGUI than a MVVM library.
+
 ## My other JS experiments
 
 https://github.com/mskr/DOMScopedScript.html
